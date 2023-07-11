@@ -3,10 +3,12 @@ from vncorenlp import VnCoreNLP
 import time
 import json
 from flask import Flask , request, jsonify
+from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from constants import *
 
 app = Flask(__name__)
+CORS(app)
 vncorenlp = VnCoreNLP("./vncorenlp/VnCoreNLP-1.1.1.jar",
                       annotators="wseg", max_heap_size='-Xmx500m')
 #load model
@@ -16,6 +18,10 @@ tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base", use_fast=False)
 model_task_1 = AutoModelForSequenceClassification.from_pretrained(model_task_1_dir)
 #task 2
 model_task_2 = AutoModelForSequenceClassification.from_pretrained(model_task_2_dir)
+
+name = [
+    "Nguyễn Mạnh Tùng", "Nguyễn Thanh Trà", "Nguyễn Danh Đức", "Đinh Công Bình", "Phạm Chính Hiệp"
+]
 
 def filter_stop_words(train_sentences, stop_words):
     new_sent = [word for word in train_sentences.split()
@@ -86,8 +92,8 @@ def custom_sort(elem):
     time = float(elem[0])
     return (priority, -time)
 
-@app.route('/api/get/<user_id>/<product_id>', methods=['GET'])
-def get_all_data(user_id, product_id):
+@app.route('/api/get/<product_id>', methods=['GET'])
+def get_all_data(product_id):
     data = []
     with open('log_file.txt', 'r') as file:
         lines = file.readlines()
@@ -96,14 +102,14 @@ def get_all_data(user_id, product_id):
         sorted_data = sorted(data, key=custom_sort)
         filtered_data = []
         for item in sorted_data:
-            if item[1] == product_id and item[2] == user_id:
+            if item[1] == product_id:
                 filtered_data.append(item)
         json_data = []
         for item in filtered_data:
             if item != None:
                 item_dict = {
                 'product_id': item[1],
-                'user_id': item[2],
+                'user_id': name[int(item[2])],
                 'review': item[3],
                 'task2': item[4]
                 }

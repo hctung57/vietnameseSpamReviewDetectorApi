@@ -38,6 +38,7 @@ COPY transformer_model ./transformer_model
 
 COPY install.py constants.py server.py vietnamese-stopwords-dash.txt ./
 
-RUN python3 install.py
+RUN python3 install.py && \
+    pip install -U flask-cors
 
 CMD ["python3", "server.py"]
