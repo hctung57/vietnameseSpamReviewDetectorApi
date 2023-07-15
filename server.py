@@ -1,14 +1,23 @@
 import re
 from vncorenlp import VnCoreNLP
-import time
 import json
+import psycopg2
 from flask import Flask , request, jsonify
 from flask_cors import CORS
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from constants import *
 
+#ket noi voi co so du lieu 
+DATABASE_URL = 'postgres://spam_user:Yh41T27MKvNg5x8NaXSgHbaqRfqGg4Ef@dpg-ciooartgkuvh5ghr6tvg-a.singapore-postgres.render.com/spam'
+conn = psycopg2.connect(DATABASE_URL)
+cur = conn.cursor()
+
+# Khoi tao flask server
 app = Flask(__name__)
 CORS(app)
+
+
+# khoi tao vncorenlp
 vncorenlp = VnCoreNLP("./vncorenlp/VnCoreNLP-1.1.1.jar",
                       annotators="wseg", max_heap_size='-Xmx500m')
 #load model
@@ -19,9 +28,6 @@ model_task_1 = AutoModelForSequenceClassification.from_pretrained(model_task_1_d
 #task 2
 model_task_2 = AutoModelForSequenceClassification.from_pretrained(model_task_2_dir)
 
-name = [
-    "Nguyễn Mạnh Tùng", "Nguyễn Thanh Trà", "Nguyễn Danh Đức", "Đinh Công Bình", "Phạm Chính Hiệp"
-]
 
 def filter_stop_words(train_sentences, stop_words):
     new_sent = [word for word in train_sentences.split()
@@ -53,11 +59,6 @@ def preprocess(text, tokenized=True, lowercased=True):
         text = pre_text
     return text
 
-def write_to_file(product_id: int, review: str, user_id: int, task2: int):
-    log_entry = f"{time.monotonic()},^,{product_id},^,{user_id},^,{review},^,{task2}"
-    # Write log entry to a text file
-    with open('log_file.txt', 'a') as file:
-        file.write(log_entry + '\n')
         
 @app.route('/api/task1', methods=['POST'])
 def handle_comment_task_1():
@@ -69,51 +70,44 @@ def handle_comment_task_1():
         predicted_class_id = outputs.logits.argmax().item()
         return str(predicted_class_id), 200
 
+
 @app.route('/api/task2', methods=['POST'])
 def handle_comment_task_2():
     if request.method == "POST":
         data = review = request.json['review']
         productID = request.json['product_id']
-        userID = request.json['user_id']
         review = preprocess(review, tokenized=True, lowercased=False)
         tokenized_input = tokenizer(str(review), truncation=True, padding=True, max_length=100, return_tensors="pt")
         outputs = model_task_2(**tokenized_input)
         predicted_class_id = outputs.logits.argmax().item()
         if predicted_class_id in [0,1,2,3]:
-            write_to_file(product_id=productID, user_id=userID, review=data, task2=predicted_class_id)
+            cur.execute("""INSERT INTO reviews (product_id, review, task2)
+                    VALUES (%s, %s, %s);""", (productID, data, predicted_class_id))
+            # Xác nhận việc thêm dữ liệu
+            conn.commit()
         return str(predicted_class_id), 200
-    
-def convert_to_array(line):
-    line_data = line.strip().split(',^,')
-    return line_data
 
-def custom_sort(elem):
-    priority = int(elem[-1])
-    time = float(elem[0])
-    return (priority, -time)
 
 @app.route('/api/get/<product_id>', methods=['GET'])
 def get_all_data(product_id):
-    data = []
-    with open('log_file.txt', 'r') as file:
-        lines = file.readlines()
-        for line in lines:
-            data.append(convert_to_array(line))
-        sorted_data = sorted(data, key=custom_sort)
-        filtered_data = []
-        for item in sorted_data:
-            if item[1] == product_id:
-                filtered_data.append(item)
-        json_data = []
-        for item in filtered_data:
-            if item != None:
-                item_dict = {
+    cur.execute("""SELECT *
+                    FROM reviews
+                    WHERE product_id = %s
+                    ORDER BY task2 ASC, time DESC
+                """, (product_id,))
+
+    # Lấy kết quả trả về từ câu lệnh SELECT
+    comments = cur.fetchall()
+    json_data = []
+    for item in comments:
+        if item != None:
+            item_dict = {
                 'product_id': item[1],
-                'user_id': name[int(item[2])],
-                'review': item[3],
-                'task2': item[4]
-                }
-                json_data.append(json.loads(json.dumps(item_dict)))
-        return jsonify(json_data)
+                'review': item[2],
+                'task2': item[3]
+            }
+            json_data.append(json.loads(json.dumps(item_dict)))
+    return jsonify(json_data)
+  
     
 app.run(host='0.0.0.0',debug=False, port=int(os.environ.get('PORT', 8081)))

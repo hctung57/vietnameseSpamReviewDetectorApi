@@ -31,6 +31,12 @@ RUN mkdir src && cd src && \
 
 RUN rm -r apache-maven-3.6.3-bin.tar.gz
 
+RUN apt install libpq-dev python-dev -y && \
+    apt-get -y install gcc && \
+    python3 install.py && \
+    pip install -U flask-cors && \
+    pip install psycopg2
+
 WORKDIR src
 
 RUN mkdir transformer_model
@@ -38,7 +44,6 @@ COPY transformer_model ./transformer_model
 
 COPY install.py constants.py server.py vietnamese-stopwords-dash.txt ./
 
-RUN python3 install.py && \
-    pip install -U flask-cors
+EXPOSE 8081
 
 CMD ["python3", "server.py"]
